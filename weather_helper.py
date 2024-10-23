@@ -1,15 +1,16 @@
 import requests
-import config 
+import config  
 
-def get_weather(city) :
-    api_key = config.OPENWEATHER_API_KEY
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}"
-    response = requests.get(url).json()
+def get_weather(city):
+    api_key = config.WEATHER_API_KEY
+    base_url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+    
+    response = requests.get(base_url)
+    data = response.json()
 
-
-    if response["cod"] == 200:
-        weather = response ['weather'][0]['description']
-        temp = round(response['main']['temp'] - 273.15, 2) #Kelvin to Celsius
-        return f"The weather in {city} with a temperature of {temp}°C."
+    if data["cod"] != "404":
+        weather_desc = data["weather"][0]["description"]
+        temp = data["main"]["temp"]
+        return f"The weather in {city} is {weather_desc} with a temperature of {temp}°C."
     else:
-        return "Sorry, I couldn't fetch the weather."
+        return "Sorry, I couldn't find the weather for that city."
