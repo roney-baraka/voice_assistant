@@ -4,19 +4,27 @@ from email.mime.text import MIMEText
 import config 
 
 
-def send_email(to_address, subject, message):
-    server = smtplib.SMTP(host="smt.gmail.com", port=587) 
-    server.starttls()
+def send_email(recipient, subject, messsage):
+    try:
+        sender_email = config.EMAIL_SENDER
+        sender_password = config.EMAIL_PASSWORD
 
-    #Login to your emmail
-    server.login(config.EMAIL_ADDRESS,config.EMAIL_PASSWORD)
+        msg = MIMEMultipart()
+        msg["From"] =  sender_email
+        msg["To"] = recipient
+        msg["Subject"] = subject
+
+        msg.attach(MIMEText(messsage, "plain"))
+
+        server =  smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, recipient,text)
+        server.quit()
 
 
-    msg = MIMEMultipart()
-    msg ['From'] = config.EMAIL_ADDRESS
-    msg ['To'] = to_address
-    msg ['Subject'] = subject
-    msg.attach(MIMEText(message, 'plain'))
+        print("Email sent successfully.")
+    except Exception as e:
+        print (f"Failed to send :{str(e)}")
 
-    server.send_message(msg)
-    server.quit()
