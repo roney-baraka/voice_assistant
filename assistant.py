@@ -7,13 +7,16 @@ import wikipedia
 from weather_helper import get_weather 
 from email_helper import send_email
 import config
-import openai
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
-openai.api_key = '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'
 
 recognizer = sr.Recognizer()
 nlp = spacy.load("en_core_web_sm")
 engine = pyttsx3.init()
+
+model_name = "google/flan-t5-small"
+tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small")
+model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
 
 def set_default_voice(engine):
 
@@ -48,25 +51,27 @@ def listen_command():
     
 def get_factual_answer(query):
     try:
-        query = query.replace("who is", "").replace("what is", "").strip()
+        # Clean the query for Wikipedia search
+        query = query.replace("who is", "").replace("what is", "").replace("name of", "").strip()
+        print(f"Searching Wikipedia for: {query}")  # Debug statement
         summary = wikipedia.summary(query, sentences=2)
+        print(f"Wikipedia summary: {summary}")  # Debug statement
         return summary
     except wikipedia.exceptions.DisambiguationError as e:
-        return f"Can you be more specific? Did you mean {e.options[:5]}?"
+        print(f"Disambiguation error: {e.options}")  # Debug statement
+        return f"Can you be more specific? Did you mean: {', '.join(e.options[:5])}?"
     except wikipedia.exceptions.PageError:
-        return "I couldn't find anything related to that."
+        return "I couldn't find anything related to that on Wikipedia."
     
 def get_llm_response(prompt):
     try:
-        response = openai.Completion.create(
-            engine = "GPT-4",
-            prompt=prompt,
-            max_tokens=100
-        )
-        return response.choices[0].text.strip()
+        inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
+        outputs = model.generate(inputs.input_ids, max_length=100, num_return_sequences=1)
+        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return response
     except Exception as e:
-        return f"Error: {e}"
-
+        return f"Error generating response: {e}"
+    
 def log_correction(command):
     with open("corrections.txt", "a") as file:
         file.write(f"Unrecognized command: {command}\n")
@@ -79,10 +84,18 @@ def learn_from_mistakes(user_query, assistant_response):
 
     return correction
 
-def process_command(command):
-    doc = nlp(command)
 
-    if "time" in command:
+def process_command(command):
+    # Check if command is a factual question
+    if any(keyword in command for keyword in ["who", "what", "when", "where", "why", "how"]):
+        factual_response = get_factual_answer(command)
+        if "I couldn't find anything" in factual_response or "specific" in factual_response:
+            speak("Let me check further.")
+            gpt_response = get_llm_response(command)
+            speak(gpt_response)
+        else:
+            speak(factual_response)
+    elif "time" in command:
         current_time = datetime.datetime.now().strftime('%H:%M')
         speak(f"The time is {current_time}")
     elif "date" in command:
@@ -125,28 +138,26 @@ def process_command(command):
         speak("What topic do you want to know about?")
         topic = listen_command()
         if topic:
-            try:
-                summary = wiki.page(topic).summary
-                speak(summary)
-            except Exception as e:
-                speak("I couldn't fetch information from Wikipedia.")
-                log_correction(command)
+            summary = get_factual_answer(topic)
+            speak(summary)
     else:
-        speak("I cannot perform that task right now.")
-        log_correction(command)
+        gpt_response = get_llm_response(command)
+        speak(gpt_response)
 
 # Main loop for voice assistant
 if __name__ == "__main__":
     assistant_name = "A DATA"
     speak(f"Hello, I am {assistant_name}. What's your name?")
     
-    user_name = listen_command()  # Store the user's name
-    speak(f"Nice to meet you, {user_name}!")
+    user_name = listen_command()
+    if user_name:
+        speak(f"Nice to meet you, {user_name}!")
 
     while True:
         command = listen_command()
-
+        
         if command:
+            print(f"Processing command: {command}")  # Debugging feedback
             process_command(command)
         else:
             speak("I couldn't hear you clearly, please try again.")
